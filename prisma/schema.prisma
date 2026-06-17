@@ -1,0 +1,230 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  SUSPENDED
+}
+
+enum InterestStatus {
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+model User {
+  id               String               @id @default(cuid())
+  email            String               @unique
+  passwordHash     String
+  role             UserRole             @default(USER)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  profile          Profile?
+  sessions         UserSession[]
+  matrimonial      MatrimonialProfile?
+  interestsSent    MatchInterest[]      @relation("interestSender")
+  interestsRecv    MatchInterest[]      @relation("interestReceiver")
+  posts            CommunityPost[]
+  donations        Donation[]
+  notifications    Notification[]
+  conversationRefs ConversationMember[]
+  messages         Message[]
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Profile {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  fullName           String
+  city               String
+  bio                String?
+  avatarUrl          String?
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MatrimonialProfile {
+  id            String          @id @default(cuid())
+  userId         String          @unique
+  age            Int
+  sect           String?
+  profession     String?
+  education      String?
+  maritalStatus  String?
+  heightCm       Int?
+  incomeRange    String?
+  aboutFamily    String?
+  isPremium      Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendations MatchRecommendation[]
+  images         MatrimonialImage[]
+}
+
+model MatrimonialImage {
+  id                   String   @id @default(cuid())
+  matrimonialProfileId String
+  url                  String
+  sortOrder            Int      @default(0)
+  isBanner             Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  matrimonialProfile   MatrimonialProfile @relation(fields: [matrimonialProfileId], references: [id], onDelete: Cascade)
+
+  @@index([matrimonialProfileId])
+  @@unique([matrimonialProfileId, sortOrder])
+}
+
+model MatchInterest {
+  id            String         @id @default(cuid())
+  senderId      String
+  receiverId    String
+  message       String?
+  status        InterestStatus @default(SENT)
+  createdAt     DateTime       @default(now())
+  sender        User           @relation("interestSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver      User           @relation("interestReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+}
+
+model MatchRecommendation {
+  id                   String   @id @default(cuid())
+  matrimonialProfileId String
+  recommendedUserId    String
+  score                Float
+  rationale            String
+  createdAt            DateTime @default(now())
+  matrimonialProfile   MatrimonialProfile @relation(fields: [matrimonialProfileId], references: [id], onDelete: Cascade)
+}
+
+model CommunityPost {
+  id          String        @id @default(cuid())
+  authorId    String
+  content     String
+  imageUrl    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  author      User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments    PostComment[]
+  likes       PostLike[]
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  postId     String
+  authorName String
+  content    String
+  createdAt  DateTime @default(now())
+  post       CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  title          String
+  description    String
+  goalAmount     Float
+  raisedAmount   Float          @default(0)
+  status         CampaignStatus @default(DRAFT)
+  isVerified     Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  donations      Donation[]
+}
+
+model Donation {
+  id          String   @id @default(cuid())
+  userId      String
+  campaignId  String
+  amount      Float
+  message     String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id         String               @id @default(cuid())
+  createdAt  DateTime             @default(now())
+  members    ConversationMember[]
+  messages   Message[]
+}
+
+model ConversationMember {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  senderId       String
+  body           String       @default("")
+  imageUrl       String?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  seen      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/** Singleton CMS: About page (hero, blocks, developer/technical partner). */
+model SiteAbout {
+  id        String   @id
+  content   Json
+  updatedAt DateTime @updatedAt
+}
