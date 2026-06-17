@@ -70,6 +70,13 @@ router.get("/matrimonial/profiles", async (req, res) => {
     const ageMaxRaw = Number.parseInt(String(req.query.ageMax ?? ""), 10);
     const professionRaw = req.query.profession;
     const profession = typeof professionRaw === "string" && professionRaw.trim() ? professionRaw.trim() : undefined;
+    const sectRaw = req.query.sect;
+    const sect = typeof sectRaw === "string" && sectRaw.trim() ? sectRaw.trim() : undefined;
+    const educationRaw = req.query.education;
+    const education = typeof educationRaw === "string" && educationRaw.trim() ? educationRaw.trim() : undefined;
+    const maritalRaw = req.query.maritalStatus;
+    const maritalStatus = typeof maritalRaw === "string" && maritalRaw.trim() ? maritalRaw.trim() : undefined;
+    const sort = typeof req.query.sort === "string" ? req.query.sort : undefined;
     const limitRaw = Number.parseInt(String(req.query.limit ?? "200"), 10);
     const limit = Number.isNaN(limitRaw) ? 200 : limitRaw;
     const profiles = await listPublicMatrimonialProfiles({
@@ -77,6 +84,10 @@ router.get("/matrimonial/profiles", async (req, res) => {
       ageMin: Number.isNaN(ageMinRaw) ? undefined : ageMinRaw,
       ageMax: Number.isNaN(ageMaxRaw) ? undefined : ageMaxRaw,
       profession,
+      sect,
+      education,
+      maritalStatus,
+      sort,
       limit
     });
     return res.json(ok(profiles));

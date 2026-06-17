@@ -7,7 +7,8 @@ import { fail, ok } from "../../utils/response";
 import {
   computeTrendingHashtags,
   filterPostsByHashtag,
-  sortPostsByTrending
+  sortPostsByTrending,
+  sortPostsByComments
 } from "../../services/community-feed.js";
 
 const router = Router();
@@ -28,6 +29,8 @@ async function fetchPostsForFeed(options?: { sort?: string; hashtag?: string; ta
   let filtered = filterPostsByHashtag(rows, options?.hashtag);
   if (options?.sort === "trending") {
     filtered = sortPostsByTrending(filtered);
+  } else if (options?.sort === "comments") {
+    filtered = sortPostsByComments(filtered);
   }
   return filtered.slice(0, take);
 }
@@ -123,12 +126,49 @@ router.post("/posts/:id/comments", requireAuth, async (req: AuthRequest, res) =>
 
 router.post("/posts/:id/like", requireAuth, async (req: AuthRequest, res) => {
   const postId = String(req.params.id);
+  const reactionParsed = z.object({
+    reactionType: z.enum(["like", "love", "support", "celebrate"]).optional()
+  }).safeParse(req.body ?? {});
+  const reactionType = reactionParsed.success ? (reactionParsed.data.reactionType ?? "like") : "like";
   await prisma.postLike.upsert({
     where: { postId_userId: { postId, userId: req.user!.userId } },
-    update: {},
-    create: { postId, userId: req.user!.userId }
+    update: { reactionType },
+    create: { postId, userId: req.user!.userId, reactionType }
   });
-  return res.json(ok({ liked: true }));
+  return res.json(ok({ liked: true, reactionType }));
+});
+
+router.patch("/posts/:id", requireAuth, async (req: AuthRequest, res) => {
+  const postId = String(req.params.id);
+  const post = await prisma.communityPost.findUnique({ where: { id: postId } });
+  if (!post) return res.status(404).json(fail("NOT_FOUND", "Post not found"));
+  if (post.authorId !== req.user!.userId) {
+    return res.status(403).json(fail("FORBIDDEN", "You can only edit your own posts"));
+  }
+  const parsed = postCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json(fail("VALIDATION_ERROR", "Invalid post payload"));
+  }
+  const finalContent = parsed.data.linkUrl
+    ? `${parsed.data.content}${COMMUNITY_POST_LINK_MARKER}${parsed.data.linkUrl}`
+    : parsed.data.content;
+  const updated = await prisma.communityPost.update({
+    where: { id: postId },
+    data: { content: finalContent, imageUrl: parsed.data.imageUrl ?? null },
+    include: postInclude
+  });
+  return res.json(ok(updated));
+});
+
+router.delete("/posts/:id", requireAuth, async (req: AuthRequest, res) => {
+  const postId = String(req.params.id);
+  const post = await prisma.communityPost.findUnique({ where: { id: postId } });
+  if (!post) return res.status(404).json(fail("NOT_FOUND", "Post not found"));
+  if (post.authorId !== req.user!.userId) {
+    return res.status(403).json(fail("FORBIDDEN", "You can only delete your own posts"));
+  }
+  await prisma.communityPost.delete({ where: { id: postId } });
+  return res.json(ok({ removed: true }));
 });
 
 router.delete("/posts/:id/like", requireAuth, async (req: AuthRequest, res) => {

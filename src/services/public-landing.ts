@@ -2,6 +2,7 @@ import { VerificationStatus, CampaignStatus } from "@prisma/client";
 import { pickBannerUrl } from "../lib/matrimonial-media";
 import { readLandingContent } from "../config/landing-content";
 import { prisma } from "../config/prisma";
+import { computeTrendingHashtags } from "./community-feed.js";
 
 export type FeaturedProfileItem = {
   name: string;
@@ -79,6 +80,20 @@ export async function buildPublicLanding() {
     copy,
     featuredProfiles,
     featuredCampaigns,
-    communityPreviewPosts
+    communityPreviewPosts,
+    liveStats: {
+      verifiedMembers: await prisma.profile.count({ where: { verificationStatus: VerificationStatus.VERIFIED } }),
+      totalPosts: await prisma.communityPost.count(),
+      activeCampaigns: await prisma.campaign.count({ where: { status: CampaignStatus.ACTIVE } }),
+      interestsSent: await prisma.matchInterest.count()
+    },
+    trendingHashtags: computeTrendingHashtags(
+      await prisma.communityPost.findMany({
+        include: { likes: true, comments: true },
+        orderBy: { createdAt: "desc" },
+        take: 80
+      }),
+      8
+    )
   };
 }

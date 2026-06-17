@@ -70,13 +70,41 @@ export type AboutDeveloper = {
   website?: string;
   email?: string;
 };
+export type AboutStat = { id: string; label: string; value: string; order: number };
+export type AboutTimeline = { id: string; year: string; title: string; body: string; order: number };
+export type AboutTeamMember = { id: string; name: string; role: string; bio?: string; imageUrl?: string; order: number };
+export type AboutFaq = { id: string; question: string; answer: string; order: number };
+export type AboutContact = {
+  address?: string;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+  facebook?: string;
+  instagram?: string;
+  mapEmbedUrl?: string;
+};
+export type AboutTestimonial = { id: string; name: string; role?: string; quote: string; imageUrl?: string; order: number };
+export type AboutGalleryImage = { id: string; imageUrl: string; caption?: string; order: number };
+export type AboutPartner = { id: string; name: string; logoUrl?: string; order: number };
 export type AboutContent = {
   hero: { title: string; subtitle: string; imageUrl?: string };
   blocks: AboutBlock[];
   awards: AboutAward[];
   documents: AboutDocument[];
   developer: AboutDeveloper;
+  stats: AboutStat[];
+  timeline: AboutTimeline[];
+  team: AboutTeamMember[];
+  faq: AboutFaq[];
+  contact: AboutContact;
+  testimonials: AboutTestimonial[];
+  gallery: AboutGalleryImage[];
+  partners: AboutPartner[];
+  videoUrl?: string;
 };
+
+export const COMMUNITY_REACTION_TYPES = ["like", "love", "support", "celebrate"] as const;
+export type CommunityReactionType = (typeof COMMUNITY_REACTION_TYPES)[number];
 
 /** Default About page when DB has no row or API read fails (must match server `site-about` defaults). */
 export const DEFAULT_ABOUT_CONTENT: AboutContent = {
@@ -138,7 +166,45 @@ export const DEFAULT_ABOUT_CONTENT: AboutContent = {
     imageUrl: undefined,
     website: undefined,
     email: undefined
-  }
+  },
+  stats: [
+    { id: "s1", order: 0, label: "Verified members", value: "500+" },
+    { id: "s2", order: 1, label: "Welfare campaigns", value: "25+" },
+    { id: "s3", order: 2, label: "Families helped", value: "1,200+" },
+    { id: "s4", order: 3, label: "Years of service", value: "10+" }
+  ],
+  timeline: [
+    { id: "t1", order: 0, year: "2015", title: "Trust founded", body: "Dogar Welfare Trust began supporting families with welfare and community programs." },
+    { id: "t2", order: 1, year: "2020", title: "Digital platform", body: "Launched online rishta and community features for wider reach." },
+    { id: "t3", order: 2, year: "2024", title: "Verified network", body: "Expanded verified profiles, SODO transparency, and donation tracking." }
+  ],
+  team: [
+    { id: "tm1", order: 0, name: "Trust leadership", role: "Chairperson", bio: "Oversees welfare programs and community standards." },
+    { id: "tm2", order: 1, name: "Community moderator", role: "Moderation lead", bio: "Keeps the community safe and respectful." }
+  ],
+  faq: [
+    { id: "f1", order: 0, question: "How are rishta profiles verified?", answer: "Every profile is reviewed by our moderation team before it appears publicly." },
+    { id: "f2", order: 1, question: "Where can I see trust documents?", answer: "Awards, registration, and SODO documents are listed on this About page." },
+    { id: "f3", order: 2, question: "How do donations work?", answer: "Active campaigns show raised amounts and goals on the Donations page." }
+  ],
+  contact: {
+    address: "Lahore, Punjab, Pakistan",
+    phone: "+92 300 0000000",
+    whatsapp: "+92 300 0000000",
+    email: "info@dogar.org",
+    facebook: "https://facebook.com",
+    instagram: "https://instagram.com"
+  },
+  testimonials: [
+    { id: "r1", order: 0, name: "Family from Lahore", role: "Member", quote: "We found a respectful match and transparent welfare support through Dogar." },
+    { id: "r2", order: 1, name: "Donor", role: "Supporter", quote: "Campaign updates are clear — we know where help goes." }
+  ],
+  gallery: [],
+  partners: [
+    { id: "p1", order: 0, name: "Local welfare partners" },
+    { id: "p2", order: 1, name: "Community volunteers" }
+  ],
+  videoUrl: undefined
 };
 
 /** Extract unique hashtags from post text (lowercase, without #). */

@@ -27,6 +27,10 @@ export function sortPostsByTrending<T extends CommunityPostRow>(posts: T[]): T[]
   return [...posts].sort((a, b) => postEngagementScore(b) - postEngagementScore(a));
 }
 
+export function sortPostsByComments<T extends CommunityPostRow>(posts: T[]): T[] {
+  return [...posts].sort((a, b) => (b.comments?.length ?? 0) - (a.comments?.length ?? 0));
+}
+
 export function filterPostsByHashtag<T extends CommunityPostRow>(posts: T[], hashtag?: string): T[] {
   if (!hashtag?.trim()) return posts;
   const tag = hashtag.replace(/^#/, "").toLowerCase();

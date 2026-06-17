@@ -4,7 +4,8 @@ import { prisma } from "../config/prisma";
 import {
   computeTrendingHashtags,
   filterPostsByHashtag,
-  sortPostsByTrending
+  sortPostsByTrending,
+  sortPostsByComments
 } from "./community-feed.js";
 
 const PUBLIC_POSTS_LIMIT = 30;
@@ -25,6 +26,8 @@ export async function listPublicCommunityPosts(options?: { sort?: string; hashta
   let filtered = filterPostsByHashtag(rows, options?.hashtag);
   if (options?.sort === "trending") {
     filtered = sortPostsByTrending(filtered);
+  } else if (options?.sort === "comments") {
+    filtered = sortPostsByComments(filtered);
   }
   return filtered.slice(0, PUBLIC_POSTS_LIMIT);
 }
@@ -44,9 +47,15 @@ function buildMatrimonialWhere(options?: {
   ageMin?: number;
   ageMax?: number;
   profession?: string;
+  sect?: string;
+  education?: string;
+  maritalStatus?: string;
 }) {
   const city = options?.city?.trim();
   const profession = options?.profession?.trim();
+  const sect = options?.sect?.trim();
+  const education = options?.education?.trim();
+  const maritalStatus = options?.maritalStatus?.trim();
   const profileCityFilter = city
     ? { city: { equals: city, mode: "insensitive" as const } }
     : {};
@@ -56,6 +65,9 @@ function buildMatrimonialWhere(options?: {
   const professionFilter = profession
     ? { profession: { contains: profession, mode: "insensitive" as const } }
     : {};
+  const sectFilter = sect ? { sect: { contains: sect, mode: "insensitive" as const } } : {};
+  const educationFilter = education ? { education: { contains: education, mode: "insensitive" as const } } : {};
+  const maritalFilter = maritalStatus ? { maritalStatus: { contains: maritalStatus, mode: "insensitive" as const } } : {};
 
   return {
     user: {
@@ -65,7 +77,10 @@ function buildMatrimonialWhere(options?: {
       }
     },
     ...(Object.keys(ageFilter).length > 0 ? { age: ageFilter } : {}),
-    ...professionFilter
+    ...professionFilter,
+    ...sectFilter,
+    ...educationFilter,
+    ...maritalFilter
   };
 }
 
@@ -74,9 +89,19 @@ export async function listPublicMatrimonialProfiles(options?: {
   ageMin?: number;
   ageMax?: number;
   profession?: string;
+  sect?: string;
+  education?: string;
+  maritalStatus?: string;
+  sort?: string;
   limit?: number;
 }) {
   const take = Math.min(PUBLIC_PROFILES_LIMIT, Math.max(1, options?.limit ?? 200));
+  const orderBy =
+    options?.sort === "age"
+      ? { age: "asc" as const }
+      : options?.sort === "recent"
+        ? { updatedAt: "desc" as const }
+        : { updatedAt: "desc" as const };
   const rows = await prisma.matrimonialProfile.findMany({
     where: buildMatrimonialWhere(options),
     include: {
@@ -84,10 +109,10 @@ export async function listPublicMatrimonialProfiles(options?: {
       images: { orderBy: { sortOrder: "asc" } }
     },
     take,
-    orderBy: { updatedAt: "desc" }
+    orderBy
   });
 
-  return Promise.all(
+  const mapped = await Promise.all(
     rows.map(async (m) => {
       const rec = await prisma.matchRecommendation.findFirst({
         where: { recommendedUserId: m.userId },
@@ -99,12 +124,18 @@ export async function listPublicMatrimonialProfiles(options?: {
         profession: m.profession,
         education: m.education,
         aboutFamily: m.aboutFamily,
+        sect: m.sect,
+        maritalStatus: m.maritalStatus,
         matchScore: rec != null ? Math.min(100, Math.round(rec.score)) : 0,
         bannerUrl: pickBannerUrl(m.images, m.user.profile),
         user: m.user
       };
     })
   );
+  if (options?.sort === "score") {
+    return mapped.sort((a, b) => b.matchScore - a.matchScore);
+  }
+  return mapped;
 }
 
 export async function getPublicMatrimonialProfile(userId: string) {

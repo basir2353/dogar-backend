@@ -151,11 +151,12 @@ model PostComment {
 }
 
 model PostLike {
-  id        String   @id @default(cuid())
-  postId    String
-  userId    String
-  createdAt DateTime @default(now())
-  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  postId       String
+  userId       String
+  reactionType String   @default("like")
+  createdAt    DateTime @default(now())
+  post         CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([postId, userId])
 }

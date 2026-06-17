@@ -31,34 +31,35 @@ function parseDiscoverLimit(value: unknown): number {
 }
 
 router.get("/discover", requireAuth, async (req: AuthRequest, res) => {
-  const cityRaw = req.query.city;
-  const city = typeof cityRaw === "string" && cityRaw.trim() ? cityRaw.trim() : undefined;
-  const ageMinRaw = Number.parseInt(String(req.query.ageMin ?? ""), 10);
-  const ageMaxRaw = Number.parseInt(String(req.query.ageMax ?? ""), 10);
-  const professionRaw = req.query.profession;
-  const profession = typeof professionRaw === "string" && professionRaw.trim() ? professionRaw.trim() : undefined;
-  const take = parseDiscoverLimit(req.query.limit);
+  const q = req.query;
+  const city = typeof q.city === "string" && q.city.trim() ? q.city.trim() : undefined;
+  const ageMinRaw = Number.parseInt(String(q.ageMin ?? ""), 10);
+  const ageMaxRaw = Number.parseInt(String(q.ageMax ?? ""), 10);
+  const profession = typeof q.profession === "string" && q.profession.trim() ? q.profession.trim() : undefined;
+  const sect = typeof q.sect === "string" && q.sect.trim() ? q.sect.trim() : undefined;
+  const education = typeof q.education === "string" && q.education.trim() ? q.education.trim() : undefined;
+  const maritalStatus = typeof q.maritalStatus === "string" && q.maritalStatus.trim() ? q.maritalStatus.trim() : undefined;
+  const sort = typeof q.sort === "string" ? q.sort : undefined;
+  const take = parseDiscoverLimit(q.limit);
   const viewerId = req.user!.userId;
   const own = await prisma.matrimonialProfile.findUnique({
     where: { userId: viewerId },
     include: { user: { include: { profile: true } } }
   });
 
-  const profileCityFilter = city
-    ? { city: { equals: city, mode: "insensitive" as const } }
-    : {};
+  const profileCityFilter = city ? { city: { equals: city, mode: "insensitive" as const } } : {};
   const ageFilter: { gte?: number; lte?: number } = {};
   if (!Number.isNaN(ageMinRaw)) ageFilter.gte = ageMinRaw;
   if (!Number.isNaN(ageMaxRaw)) ageFilter.lte = ageMaxRaw;
-  const professionFilter = profession
-    ? { profession: { contains: profession, mode: "insensitive" as const } }
-    : {};
 
   const rows = await prisma.matrimonialProfile.findMany({
     where: {
       userId: { not: viewerId },
       ...(Object.keys(ageFilter).length > 0 ? { age: ageFilter } : {}),
-      ...professionFilter,
+      ...(profession ? { profession: { contains: profession, mode: "insensitive" } } : {}),
+      ...(sect ? { sect: { contains: sect, mode: "insensitive" } } : {}),
+      ...(education ? { education: { contains: education, mode: "insensitive" } } : {}),
+      ...(maritalStatus ? { maritalStatus: { contains: maritalStatus, mode: "insensitive" } } : {}),
       user: {
         profile: {
           verificationStatus: VerificationStatus.VERIFIED,
@@ -71,10 +72,10 @@ router.get("/discover", requireAuth, async (req: AuthRequest, res) => {
       images: { orderBy: { sortOrder: "asc" } }
     },
     take,
-    orderBy: { updatedAt: "desc" }
+    orderBy: sort === "age" ? { age: "asc" } : { updatedAt: "desc" }
   });
 
-  const out = await Promise.all(
+  let out = await Promise.all(
     rows.map(async (m) => {
       let matchScore = 0;
       if (own) {
@@ -102,9 +103,12 @@ router.get("/discover", requireAuth, async (req: AuthRequest, res) => {
     })
   );
 
+  if (sort === "score") {
+    out = out.sort((a, b) => b.matchScore - a.matchScore);
+  }
+
   return res.json(
     ok(out, {
-      /** Client can explain why count may be one less than “Featured” on the home page. */
       discoverExcludesViewer: true,
       viewerUserId: viewerId,
       resultCount: out.length
@@ -360,6 +364,60 @@ router.get("/interests/received", requireAuth, async (req: AuthRequest, res) => 
     take: 50
   });
   return res.json(ok(interests));
+});
+
+router.patch("/interests/:interestId", requireAuth, async (req: AuthRequest, res) => {
+  const parsed = z.object({ status: z.enum(["ACCEPTED", "REJECTED"]) }).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json(fail("VALIDATION_ERROR", "status must be ACCEPTED or REJECTED"));
+  }
+  const interest = await prisma.matchInterest.findUnique({ where: { id: String(req.params.interestId) } });
+  if (!interest || interest.receiverId !== req.user!.userId) {
+    return res.status(404).json(fail("NOT_FOUND", "Interest not found"));
+  }
+  const updated = await prisma.matchInterest.update({
+    where: { id: interest.id },
+    data: { status: parsed.data.status }
+  });
+  return res.json(ok(updated));
+});
+
+router.get("/similar/:userId", requireAuth, async (req: AuthRequest, res) => {
+  const targetId = String(req.params.userId);
+  const target = await prisma.matrimonialProfile.findFirst({
+    where: { userId: targetId, user: { profile: { verificationStatus: VerificationStatus.VERIFIED } } },
+    include: { user: { include: { profile: true } }, images: { orderBy: { sortOrder: "asc" } } }
+  });
+  if (!target) return res.status(404).json(fail("NOT_FOUND", "Profile not found"));
+
+  const rows = await prisma.matrimonialProfile.findMany({
+    where: {
+      userId: { notIn: [req.user!.userId, targetId] },
+      user: { profile: { verificationStatus: VerificationStatus.VERIFIED } },
+      ...(target.user.profile?.city ? { user: { profile: { city: { equals: target.user.profile.city, mode: "insensitive" } } } } : {})
+    },
+    include: { user: { include: { profile: true } }, images: { orderBy: { sortOrder: "asc" } } },
+    take: 6,
+    orderBy: { updatedAt: "desc" }
+  });
+
+  const similar = rows.map((m) => ({
+    userId: m.userId,
+    name: m.user.profile?.fullName ?? "Member",
+    age: m.age,
+    city: m.user.profile?.city ?? "",
+    profession: m.profession,
+    matchScore: compatibilityScore({
+      ageA: target.age,
+      ageB: m.age,
+      sameCity: target.user.profile?.city === m.user.profile?.city,
+      sameSect: Boolean(target.sect && m.sect && target.sect === m.sect),
+      educationCompatibility: 70,
+      professionCompatibility: 70
+    }),
+    bannerUrl: pickBannerUrl(m.images, m.user.profile)
+  }));
+  return res.json(ok(similar));
 });
 
 export default router;
