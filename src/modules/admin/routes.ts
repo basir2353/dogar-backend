@@ -2,6 +2,8 @@ import { UserRole } from "../../shared/index.js";
 import { Router } from "express";
 import { CampaignStatus } from "@prisma/client";
 import { z } from "zod";
+import multer from "multer";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,9 +12,14 @@ import { defaultLandingCopy, readLandingContent, writeLandingContent, type Landi
 import { readAboutContent, writeAboutContent, parseAboutPayload } from "../../services/site-about";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { isDbUnavailable, sendServiceUnavailable } from "../../utils/db-availability";
+import { storageAdapter } from "../../utils/storage";
 import { fail, ok } from "../../utils/response";
 
 const router = Router();
+const adminUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 }
+});
 const profileOptionsFilePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../.profile-options.json");
 const DEFAULT_CASTES = ["Dogar", "Jutt", "Rajput", "Sheikh", "Arain"];
 const readCasteOptions = async () => {
@@ -248,6 +255,41 @@ router.put("/content/about", requireAuth, requireRole([UserRole.ADMIN, UserRole.
     return sendServiceUnavailable(res);
   }
 });
+
+router.post(
+  "/upload",
+  requireAuth,
+  requireRole([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+  adminUpload.single("file"),
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json(fail("VALIDATION_ERROR", "file is required"));
+    }
+    const allowed = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "application/pdf"
+    ];
+    if (!allowed.includes(req.file.mimetype)) {
+      return res.status(400).json(fail("VALIDATION_ERROR", "Only JPEG, PNG, WebP, GIF, or PDF files are allowed"));
+    }
+    const ext =
+      req.file.mimetype === "application/pdf"
+        ? "pdf"
+        : req.file.mimetype === "image/png"
+          ? "png"
+          : req.file.mimetype === "image/webp"
+            ? "webp"
+            : req.file.mimetype === "image/gif"
+              ? "gif"
+              : "jpg";
+    const key = `admin/${Date.now()}-${randomBytes(4).toString("hex")}.${ext}`;
+    const url = await storageAdapter.upload(key, req.file.buffer);
+    return res.status(201).json(ok({ url, mimeType: req.file.mimetype }));
+  }
+);
 
 router.get("/content/landing", requireAuth, requireRole([UserRole.ADMIN, UserRole.SUPER_ADMIN]), async (_req, res) => {
   const content = await readLandingContent();

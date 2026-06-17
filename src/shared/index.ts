@@ -45,6 +45,22 @@ export const COMMUNITY_POST_LINK_MARKER = "\n\n__LINK__\n" as const;
 
 /** Public About page (CMS) — English source; client translates for ur/pa. */
 export type AboutBlock = { id: string; title: string; body: string; imageUrl?: string; order: number };
+export type AboutAward = {
+  id: string;
+  title: string;
+  year?: string;
+  description: string;
+  imageUrl?: string;
+  order: number;
+};
+export type AboutDocument = {
+  id: string;
+  title: string;
+  description?: string;
+  fileUrl: string;
+  category: "award" | "registration" | "certificate" | "sodo" | "other";
+  order: number;
+};
 export type AboutDeveloper = {
   sectionTitle: string;
   name: string;
@@ -57,6 +73,8 @@ export type AboutDeveloper = {
 export type AboutContent = {
   hero: { title: string; subtitle: string; imageUrl?: string };
   blocks: AboutBlock[];
+  awards: AboutAward[];
+  documents: AboutDocument[];
   developer: AboutDeveloper;
 };
 
@@ -84,6 +102,34 @@ export const DEFAULT_ABOUT_CONTENT: AboutContent = {
       imageUrl: undefined
     }
   ],
+  awards: [
+    {
+      id: "award-community",
+      order: 0,
+      title: "Community service recognition",
+      year: "2024",
+      description: "Honoured for transparent welfare work and family support programs across Punjab.",
+      imageUrl: undefined
+    }
+  ],
+  documents: [
+    {
+      id: "doc-registration",
+      order: 0,
+      title: "Trust registration certificate",
+      description: "Official registration document for Dogar Welfare Trust.",
+      fileUrl: "",
+      category: "registration"
+    },
+    {
+      id: "doc-sodo",
+      order: 1,
+      title: "SODO / society documents",
+      description: "Society registration and compliance records available for verification.",
+      fileUrl: "",
+      category: "sodo"
+    }
+  ],
   developer: {
     sectionTitle: "Technical partner",
     name: "Platform team",
@@ -93,6 +139,21 @@ export const DEFAULT_ABOUT_CONTENT: AboutContent = {
     website: undefined,
     email: undefined
   }
+};
+
+/** Extract unique hashtags from post text (lowercase, without #). */
+export const extractHashtags = (text: string): string[] => {
+  const matches = text.match(/#([\w\u0600-\u06FF]+)/g) ?? [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of matches) {
+    const tag = raw.slice(1).toLowerCase();
+    if (tag && !seen.has(tag)) {
+      seen.add(tag);
+      out.push(tag);
+    }
+  }
+  return out;
 };
 
 export const splitCommunityPostBodyAndLink = (stored: string): { body: string; linkUrl?: string } => {

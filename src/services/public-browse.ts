@@ -1,38 +1,84 @@
 import { VerificationStatus } from "@prisma/client";
 import { pickBannerUrl } from "../lib/matrimonial-media";
 import { prisma } from "../config/prisma";
+import {
+  computeTrendingHashtags,
+  filterPostsByHashtag,
+  sortPostsByTrending
+} from "./community-feed.js";
 
 const PUBLIC_POSTS_LIMIT = 30;
 const PUBLIC_PROFILES_LIMIT = 500;
 
-export async function listPublicCommunityPosts() {
-  return prisma.communityPost.findMany({
-    include: {
-      likes: true,
-      comments: { orderBy: { createdAt: "asc" } },
-      author: { include: { profile: true } }
-    },
+const postInclude = {
+  likes: true,
+  comments: { orderBy: { createdAt: "asc" as const } },
+  author: { include: { profile: true } }
+};
+
+export async function listPublicCommunityPosts(options?: { sort?: string; hashtag?: string }) {
+  const rows = await prisma.communityPost.findMany({
+    include: postInclude,
     orderBy: { createdAt: "desc" },
-    take: PUBLIC_POSTS_LIMIT
+    take: 100
   });
+  let filtered = filterPostsByHashtag(rows, options?.hashtag);
+  if (options?.sort === "trending") {
+    filtered = sortPostsByTrending(filtered);
+  }
+  return filtered.slice(0, PUBLIC_POSTS_LIMIT);
 }
 
-export async function listPublicMatrimonialProfiles(options?: { city?: string; limit?: number }) {
-  const take = Math.min(PUBLIC_PROFILES_LIMIT, Math.max(1, options?.limit ?? 200));
+export async function listPublicTrendingHashtags() {
+  const rows = await prisma.communityPost.findMany({
+    include: { likes: true, comments: true },
+    orderBy: { createdAt: "desc" },
+    take: 100
+  });
+  return computeTrendingHashtags(rows);
+}
+
+
+function buildMatrimonialWhere(options?: {
+  city?: string;
+  ageMin?: number;
+  ageMax?: number;
+  profession?: string;
+}) {
   const city = options?.city?.trim();
+  const profession = options?.profession?.trim();
   const profileCityFilter = city
     ? { city: { equals: city, mode: "insensitive" as const } }
     : {};
+  const ageFilter: { gte?: number; lte?: number } = {};
+  if (options?.ageMin != null) ageFilter.gte = options.ageMin;
+  if (options?.ageMax != null) ageFilter.lte = options.ageMax;
+  const professionFilter = profession
+    ? { profession: { contains: profession, mode: "insensitive" as const } }
+    : {};
 
-  const rows = await prisma.matrimonialProfile.findMany({
-    where: {
-      user: {
-        profile: {
-          verificationStatus: VerificationStatus.VERIFIED,
-          ...profileCityFilter
-        }
+  return {
+    user: {
+      profile: {
+        verificationStatus: VerificationStatus.VERIFIED,
+        ...profileCityFilter
       }
     },
+    ...(Object.keys(ageFilter).length > 0 ? { age: ageFilter } : {}),
+    ...professionFilter
+  };
+}
+
+export async function listPublicMatrimonialProfiles(options?: {
+  city?: string;
+  ageMin?: number;
+  ageMax?: number;
+  profession?: string;
+  limit?: number;
+}) {
+  const take = Math.min(PUBLIC_PROFILES_LIMIT, Math.max(1, options?.limit ?? 200));
+  const rows = await prisma.matrimonialProfile.findMany({
+    where: buildMatrimonialWhere(options),
     include: {
       user: { include: { profile: true } },
       images: { orderBy: { sortOrder: "asc" } }

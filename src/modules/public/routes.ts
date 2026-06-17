@@ -3,7 +3,8 @@ import { buildPublicLanding } from "../../services/public-landing";
 import {
   getPublicMatrimonialProfile,
   listPublicCommunityPosts,
-  listPublicMatrimonialProfiles
+  listPublicMatrimonialProfiles,
+  listPublicTrendingHashtags
 } from "../../services/public-browse";
 import { readAboutContent } from "../../services/site-about";
 import { fail, ok } from "../../utils/response";
@@ -35,10 +36,24 @@ router.get("/about", async (_req, res) => {
   }
 });
 
-router.get("/community/posts", async (_req, res) => {
+router.get("/community/posts", async (req, res) => {
   try {
-    const posts = await listPublicCommunityPosts();
+    const sort = typeof req.query.sort === "string" ? req.query.sort : undefined;
+    const hashtag = typeof req.query.hashtag === "string" ? req.query.hashtag : undefined;
+    const posts = await listPublicCommunityPosts({ sort, hashtag });
     return res.json(ok(posts));
+  } catch (error) {
+    if (isDbUnavailable(error)) {
+      return sendServiceUnavailable(res);
+    }
+    throw error;
+  }
+});
+
+router.get("/community/hashtags/trending", async (_req, res) => {
+  try {
+    const tags = await listPublicTrendingHashtags();
+    return res.json(ok(tags));
   } catch (error) {
     if (isDbUnavailable(error)) {
       return sendServiceUnavailable(res);
@@ -51,9 +66,19 @@ router.get("/matrimonial/profiles", async (req, res) => {
   try {
     const cityRaw = req.query.city;
     const city = typeof cityRaw === "string" && cityRaw.trim() ? cityRaw.trim() : undefined;
+    const ageMinRaw = Number.parseInt(String(req.query.ageMin ?? ""), 10);
+    const ageMaxRaw = Number.parseInt(String(req.query.ageMax ?? ""), 10);
+    const professionRaw = req.query.profession;
+    const profession = typeof professionRaw === "string" && professionRaw.trim() ? professionRaw.trim() : undefined;
     const limitRaw = Number.parseInt(String(req.query.limit ?? "200"), 10);
     const limit = Number.isNaN(limitRaw) ? 200 : limitRaw;
-    const profiles = await listPublicMatrimonialProfiles({ city, limit });
+    const profiles = await listPublicMatrimonialProfiles({
+      city,
+      ageMin: Number.isNaN(ageMinRaw) ? undefined : ageMinRaw,
+      ageMax: Number.isNaN(ageMaxRaw) ? undefined : ageMaxRaw,
+      profession,
+      limit
+    });
     return res.json(ok(profiles));
   } catch (error) {
     if (isDbUnavailable(error)) {

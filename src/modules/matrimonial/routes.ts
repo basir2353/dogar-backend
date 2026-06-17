@@ -33,6 +33,10 @@ function parseDiscoverLimit(value: unknown): number {
 router.get("/discover", requireAuth, async (req: AuthRequest, res) => {
   const cityRaw = req.query.city;
   const city = typeof cityRaw === "string" && cityRaw.trim() ? cityRaw.trim() : undefined;
+  const ageMinRaw = Number.parseInt(String(req.query.ageMin ?? ""), 10);
+  const ageMaxRaw = Number.parseInt(String(req.query.ageMax ?? ""), 10);
+  const professionRaw = req.query.profession;
+  const profession = typeof professionRaw === "string" && professionRaw.trim() ? professionRaw.trim() : undefined;
   const take = parseDiscoverLimit(req.query.limit);
   const viewerId = req.user!.userId;
   const own = await prisma.matrimonialProfile.findUnique({
@@ -43,10 +47,18 @@ router.get("/discover", requireAuth, async (req: AuthRequest, res) => {
   const profileCityFilter = city
     ? { city: { equals: city, mode: "insensitive" as const } }
     : {};
+  const ageFilter: { gte?: number; lte?: number } = {};
+  if (!Number.isNaN(ageMinRaw)) ageFilter.gte = ageMinRaw;
+  if (!Number.isNaN(ageMaxRaw)) ageFilter.lte = ageMaxRaw;
+  const professionFilter = profession
+    ? { profession: { contains: profession, mode: "insensitive" as const } }
+    : {};
 
   const rows = await prisma.matrimonialProfile.findMany({
     where: {
       userId: { not: viewerId },
+      ...(Object.keys(ageFilter).length > 0 ? { age: ageFilter } : {}),
+      ...professionFilter,
       user: {
         profile: {
           verificationStatus: VerificationStatus.VERIFIED,

@@ -1,4 +1,4 @@
-import type { AboutContent, AboutBlock, AboutDeveloper } from "../shared/index.js";
+import type { AboutContent, AboutAward, AboutDocument } from "../shared/index.js";
 import { DEFAULT_ABOUT_CONTENT } from "../shared/index.js";
 import { z } from "zod";
 import { prisma } from "../config/prisma";
@@ -8,6 +8,24 @@ const aboutBlockZ = z.object({
   title: z.string().min(1).max(500),
   body: z.string().min(1).max(20_000),
   imageUrl: z.string().max(2000).optional(),
+  order: z.number().int()
+});
+
+const aboutAwardZ = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(500),
+  year: z.string().max(20).optional(),
+  description: z.string().min(1).max(5_000),
+  imageUrl: z.string().max(2000).optional(),
+  order: z.number().int()
+});
+
+const aboutDocumentZ = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1).max(500),
+  description: z.string().max(5_000).optional(),
+  fileUrl: z.string().max(2000),
+  category: z.enum(["award", "registration", "certificate", "sodo", "other"]),
   order: z.number().int()
 });
 
@@ -28,6 +46,8 @@ const aboutContentZ = z.object({
     imageUrl: z.string().max(2000).optional()
   }),
   blocks: z.array(aboutBlockZ).min(1).max(12),
+  awards: z.array(aboutAwardZ).max(20).default([]),
+  documents: z.array(aboutDocumentZ).max(30).default([]),
   developer: aboutDeveloperZ
 });
 
@@ -35,19 +55,29 @@ const SINGLETON_ID = "default";
 
 export const defaultAboutContent: AboutContent = DEFAULT_ABOUT_CONTENT;
 
-function sortBlocks(b: AboutBlock[]) {
-  return [...b].sort((a, b) => a.order - b.order);
+function sortByOrder<T extends { order: number }>(items: T[]) {
+  return [...items].sort((a, b) => a.order - b.order);
 }
 
 export function mergeAbout(partial: Partial<AboutContent> | null | undefined, base: AboutContent = defaultAboutContent): AboutContent {
-  if (!partial) return { ...defaultAboutContent, blocks: sortBlocks(defaultAboutContent.blocks) };
+  if (!partial) return { ...defaultAboutContent, blocks: sortByOrder(defaultAboutContent.blocks), awards: sortByOrder(defaultAboutContent.awards), documents: sortByOrder(defaultAboutContent.documents) };
   const blocks = (partial.blocks?.length ? partial.blocks : defaultAboutContent.blocks).map((b, i) => ({
     ...b,
     order: typeof b.order === "number" ? b.order : i
   }));
+  const awards = (partial.awards ?? defaultAboutContent.awards).map((a: AboutAward, i: number) => ({
+    ...a,
+    order: typeof a.order === "number" ? a.order : i
+  }));
+  const documents = (partial.documents ?? defaultAboutContent.documents).map((d: AboutDocument, i: number) => ({
+    ...d,
+    order: typeof d.order === "number" ? d.order : i
+  }));
   return {
     hero: { ...base.hero, ...partial.hero },
-    blocks: sortBlocks(blocks),
+    blocks: sortByOrder(blocks),
+    awards: sortByOrder(awards),
+    documents: sortByOrder(documents),
     developer: { ...base.developer, ...partial.developer }
   };
 }
@@ -55,7 +85,9 @@ export function mergeAbout(partial: Partial<AboutContent> | null | undefined, ba
 export async function readAboutContent(): Promise<AboutContent> {
   const fallback = (): AboutContent => ({
     ...DEFAULT_ABOUT_CONTENT,
-    blocks: sortBlocks([...DEFAULT_ABOUT_CONTENT.blocks])
+    blocks: sortByOrder([...DEFAULT_ABOUT_CONTENT.blocks]),
+    awards: sortByOrder([...DEFAULT_ABOUT_CONTENT.awards]),
+    documents: sortByOrder([...DEFAULT_ABOUT_CONTENT.documents])
   });
   try {
     const row = await prisma.siteAbout.findUnique({ where: { id: SINGLETON_ID } });

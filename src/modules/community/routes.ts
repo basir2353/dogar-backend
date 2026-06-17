@@ -4,8 +4,33 @@ import { z } from "zod";
 import { prisma } from "../../config/prisma";
 import { requireAuth, type AuthRequest } from "../../middleware/auth";
 import { fail, ok } from "../../utils/response";
+import {
+  computeTrendingHashtags,
+  filterPostsByHashtag,
+  sortPostsByTrending
+} from "../../services/community-feed.js";
 
 const router = Router();
+
+const postInclude = {
+  likes: true,
+  comments: { orderBy: { createdAt: "asc" as const } },
+  author: { include: { profile: true } }
+};
+
+async function fetchPostsForFeed(options?: { sort?: string; hashtag?: string; take?: number }) {
+  const take = Math.min(50, Math.max(1, options?.take ?? 30));
+  const rows = await prisma.communityPost.findMany({
+    include: postInclude,
+    orderBy: { createdAt: "desc" },
+    take: 100
+  });
+  let filtered = filterPostsByHashtag(rows, options?.hashtag);
+  if (options?.sort === "trending") {
+    filtered = sortPostsByTrending(filtered);
+  }
+  return filtered.slice(0, take);
+}
 
 const optionalTrimmedString = z.preprocess((value) => {
   if (value === null || value === undefined) return undefined;
@@ -29,17 +54,20 @@ const postCreateSchema = z.object({
   linkUrl: optionalTrimmedString.refine((v) => v === undefined || isAllowedExternalLink(v), "Invalid link URL")
 });
 
-router.get("/posts", requireAuth, async (_req, res) => {
-  const posts = await prisma.communityPost.findMany({
-    include: {
-      likes: true,
-      comments: { orderBy: { createdAt: "asc" } },
-      author: { include: { profile: true } }
-    },
-    orderBy: { createdAt: "desc" },
-    take: 30
-  });
+router.get("/posts", requireAuth, async (req, res) => {
+  const sort = typeof req.query.sort === "string" ? req.query.sort : undefined;
+  const hashtag = typeof req.query.hashtag === "string" ? req.query.hashtag : undefined;
+  const posts = await fetchPostsForFeed({ sort, hashtag });
   return res.json(ok(posts));
+});
+
+router.get("/hashtags/trending", requireAuth, async (_req, res) => {
+  const rows = await prisma.communityPost.findMany({
+    include: { likes: true, comments: true },
+    orderBy: { createdAt: "desc" },
+    take: 100
+  });
+  return res.json(ok(computeTrendingHashtags(rows)));
 });
 
 router.post("/posts", requireAuth, async (req: AuthRequest, res) => {
