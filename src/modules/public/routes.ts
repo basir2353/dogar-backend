@@ -7,6 +7,7 @@ import {
   listPublicTrendingHashtags
 } from "../../services/public-browse";
 import { readAboutContent } from "../../services/site-about";
+import { createContactMessage, contactSubmitSchema } from "../../services/contact-messages";
 import { fail, ok } from "../../utils/response";
 import { isDbUnavailable, sendServiceUnavailable } from "../../utils/db-availability";
 
@@ -106,6 +107,23 @@ router.get("/matrimonial/profile/:userId", async (req, res) => {
       return res.status(404).json(fail("NOT_FOUND", "Profile not found"));
     }
     return res.json(ok(profile));
+  } catch (error) {
+    if (isDbUnavailable(error)) {
+      return sendServiceUnavailable(res);
+    }
+    throw error;
+  }
+});
+
+router.post("/contact", async (req, res) => {
+  try {
+    const parsed = contactSubmitSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]?.message ?? "Invalid contact form";
+      return res.status(400).json(fail("VALIDATION_ERROR", first));
+    }
+    const row = await createContactMessage(parsed.data);
+    return res.status(201).json(ok({ id: row.id, message: "Thank you. We received your message and will respond soon." }));
   } catch (error) {
     if (isDbUnavailable(error)) {
       return sendServiceUnavailable(res);

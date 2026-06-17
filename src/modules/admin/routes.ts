@@ -1,6 +1,6 @@
 import { UserRole } from "../../shared/index.js";
 import { Router } from "express";
-import { CampaignStatus } from "@prisma/client";
+import { CampaignStatus, ContactMessageStatus } from "@prisma/client";
 import { z } from "zod";
 import multer from "multer";
 import { randomBytes } from "node:crypto";
@@ -10,6 +10,12 @@ import { fileURLToPath } from "node:url";
 import { prisma } from "../../config/prisma";
 import { defaultLandingCopy, readLandingContent, writeLandingContent, type LandingCopy } from "../../config/landing-content";
 import { readAboutContent, writeAboutContent, parseAboutPayload } from "../../services/site-about";
+import {
+  countNewContactMessages,
+  deleteContactMessage,
+  listContactMessages,
+  updateContactMessageStatus
+} from "../../services/contact-messages.js";
 import { requireAuth, requireRole } from "../../middleware/auth";
 import { isDbUnavailable, sendServiceUnavailable } from "../../utils/db-availability";
 import { storageAdapter } from "../../utils/storage";
@@ -49,11 +55,24 @@ router.get("/kpis", requireAuth, requireRole([UserRole.ADMIN, UserRole.SUPER_ADM
       prisma.donation.aggregate({ _sum: { amount: true } })
     ]);
 
+    let newContactMessages = 0;
+    let totalContactMessages = 0;
+    try {
+      [newContactMessages, totalContactMessages] = await Promise.all([
+        countNewContactMessages(),
+        prisma.contactMessage.count()
+      ]);
+    } catch {
+      // ContactMessage table may not exist until migration is applied.
+    }
+
     return res.json(ok({
       totalUsers: users,
       totalPosts: posts,
       totalCampaigns: campaigns,
-      totalDonations: donations._sum.amount ?? 0
+      totalDonations: donations._sum.amount ?? 0,
+      newContactMessages,
+      totalContactMessages
     }));
   } catch (error) {
     if (!isDbUnavailable(error)) {
@@ -324,5 +343,59 @@ router.put("/content/landing", requireAuth, requireRole([UserRole.ADMIN, UserRol
   await writeLandingContent(merged);
   return res.json(ok(merged));
 });
+
+router.get(
+  "/contact-messages",
+  requireAuth,
+  requireRole([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MODERATOR]),
+  async (req, res) => {
+    try {
+      const statusRaw = req.query.status;
+      const status =
+        typeof statusRaw === "string" && Object.values(ContactMessageStatus).includes(statusRaw as ContactMessageStatus)
+          ? (statusRaw as ContactMessageStatus)
+          : undefined;
+      const rows = await listContactMessages({ status });
+      return res.json(ok(rows));
+    } catch (error) {
+      if (!isDbUnavailable(error)) {
+        throw error;
+      }
+      return sendServiceUnavailable(res);
+    }
+  }
+);
+
+router.patch(
+  "/contact-messages/:id",
+  requireAuth,
+  requireRole([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MODERATOR]),
+  async (req, res) => {
+    const parsed = z.object({ status: z.nativeEnum(ContactMessageStatus) }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json(fail("VALIDATION_ERROR", "Invalid status"));
+    }
+    try {
+      const updated = await updateContactMessageStatus(String(req.params.id), parsed.data.status);
+      return res.json(ok(updated));
+    } catch {
+      return res.status(404).json(fail("NOT_FOUND", "Message not found"));
+    }
+  }
+);
+
+router.delete(
+  "/contact-messages/:id",
+  requireAuth,
+  requireRole([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.MODERATOR]),
+  async (req, res) => {
+    try {
+      await deleteContactMessage(String(req.params.id));
+      return res.json(ok({ removed: true }));
+    } catch {
+      return res.status(404).json(fail("NOT_FOUND", "Message not found"));
+    }
+  }
+);
 
 export default router;
