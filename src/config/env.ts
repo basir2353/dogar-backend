@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url";
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDir = path.dirname(currentFilePath);
 const envPath = path.resolve(currentDir, "../../.env");
-// Local `.env` overrides host env in development; on Railway/Vercel use platform env vars.
-dotenv.config({ path: envPath, override: process.env.NODE_ENV !== "production" });
+// Production (Railway): use platform env vars only. Local dev: load backend/.env
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config({ path: envPath, override: true });
+}
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
