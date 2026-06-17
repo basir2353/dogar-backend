@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { uploadDirAbs } from "../config/env";
+import { env, uploadDirAbs } from "../config/env";
 
 export interface StorageAdapter {
   upload(key: string, content: Buffer): Promise<string>;
@@ -16,12 +16,10 @@ export class LocalStorageAdapter implements StorageAdapter {
 }
 
 export class S3CompatibleAdapter implements StorageAdapter {
-  // Placeholder for aws-sdk v3/minio implementation in production.
   async upload(_key: string, _content: Buffer): Promise<string> {
-    throw new Error("S3 adapter not configured. Inject production credentials and bucket policy.");
+    throw new Error("S3 adapter not configured. Set STORAGE_DRIVER=local or wire S3 credentials.");
   }
 }
 
-export const storageAdapter: StorageAdapter = process.env.NODE_ENV === "production"
-  ? new S3CompatibleAdapter()
-  : new LocalStorageAdapter();
+export const storageAdapter: StorageAdapter =
+  env.STORAGE_DRIVER === "s3" ? new S3CompatibleAdapter() : new LocalStorageAdapter();

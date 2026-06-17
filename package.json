@@ -7,6 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
+    "start:prod": "prisma migrate deploy && node dist/server.js",
+    "postinstall": "prisma generate",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -14,7 +16,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:push": "prisma db push",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "db:check": "tsx scripts/db-check.ts",
+    "db:setup": "tsx scripts/rebuild-db.ts"
   },
   "keywords": [
     "express",
@@ -24,6 +28,9 @@
   "author": "Dogar Welfare Organization",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
@@ -38,6 +45,7 @@
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
+    "prisma": "^6.19.3",
     "socket.io": "^4.8.3",
     "zod": "^4.3.6"
   },
@@ -50,7 +58,6 @@
     "@types/morgan": "^1.9.10",
     "@types/multer": "^2.1.0",
     "@types/node": "^25.6.0",
-    "prisma": "^6.19.3",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^3.2.4"

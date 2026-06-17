@@ -1,5 +1,4 @@
 import express from "express";
-import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
@@ -12,29 +11,14 @@ import chatRoutes from "./modules/chat/routes";
 import adminRoutes from "./modules/admin/routes";
 import publicRoutes from "./modules/public/routes";
 import { env, uploadDirAbs } from "./config/env";
+import { corsOptions } from "./config/cors";
 import { isDbUnavailable, serviceUnavailableMessage } from "./utils/db-availability";
 import { fail, ok } from "./utils/response";
+import cors from "cors";
 
 export const app = express();
 
-const frontendOrigin = env.FRONTEND_URL?.replace(/\/$/, "").trim() || undefined;
-app.use(
-  cors({
-    origin:
-      env.NODE_ENV === "production" && frontendOrigin
-        ? frontendOrigin
-        : (origin, cb) => {
-            if (!origin) {
-              return cb(null, true);
-            }
-            if (frontendOrigin && origin !== frontendOrigin) {
-              return cb(null, false);
-            }
-            return cb(null, true);
-          },
-    credentials: true
-  })
-);
+app.use(cors(corsOptions));
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }

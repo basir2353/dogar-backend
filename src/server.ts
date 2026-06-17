@@ -2,16 +2,16 @@ import http from "node:http";
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { app } from "./app";
-import { env } from "./config/env";
+import { env, getAllowedOrigins } from "./config/env";
+import { socketCorsOrigin } from "./config/cors";
 import { isUserInConversation } from "./lib/conversation-access";
 import { setSocketIO } from "./lib/realtime";
 import { prisma } from "./config/prisma";
 
-const frontendOrigin = env.FRONTEND_URL?.replace(/\/$/, "").trim();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: env.NODE_ENV === "production" && frontendOrigin ? frontendOrigin : true,
+    origin: socketCorsOrigin,
     credentials: true
   }
 });
@@ -96,14 +96,15 @@ io.on("connection", (socket) => {
   });
 });
 
-if (env.NODE_ENV === "production" && !frontendOrigin) {
+if (env.NODE_ENV === "production" && getAllowedOrigins().length === 0) {
   // eslint-disable-next-line no-console
   console.warn(
     "[api] FRONTEND_URL is not set: CORS and Socket.IO allow all origins. Set FRONTEND_URL in production."
   );
 }
 
-server.listen(env.PORT, () => {
+const host = env.NODE_ENV === "production" ? "0.0.0.0" : undefined;
+server.listen(env.PORT, host, () => {
   // eslint-disable-next-line no-console
-  console.log(`Dogar API listening on port ${env.PORT}`);
+  console.log(`Dogar API listening on ${host ?? "localhost"}:${env.PORT}`);
 });
